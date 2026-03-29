@@ -1,5 +1,6 @@
 use std::process::Command;
 use regex::Regex;
+extern crate libc;
 
 /// Strip ANSI escape codes from string
 pub fn strip_ansi(s: &str) -> String {
@@ -98,13 +99,35 @@ pub fn get_version() -> String {
 }
 
 pub fn start() -> Result<String, String> {
-    let out = run_cmd_sudo(&["adguard-cli", "start"]);
-    let clean = strip_ansi(&out);
-    let lower = clean.to_lowercase();
-    if lower.contains("error") || lower.contains("failed") || lower.contains("can't") || lower.contains("cannot") {
-        Err(clean)
-    } else {
-        Ok(clean)
+    // adguard-cli start runs in foreground — spawn detached so GUI doesn't hang
+    use std::os::unix::process::CommandExt;
+    let result = unsafe {
+        Command::new("adguard-cli")
+            .arg("start")
+            .pre_exec(|| {
+                // Detach from process group so it survives GUI close
+                libc::setsid();
+                Ok(())
+            })
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+    };
+    match result {
+        Ok(_) => {
+            // Give it a moment to start, then check status
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            let status_out = run_cmd(&["adguard-cli", "status"]);
+            let clean = strip_ansi(&status_out);
+            let lower = clean.to_lowercase();
+            if lower.contains("not running") || lower.contains("failed") {
+                Err(clean)
+            } else {
+                Ok("Protection started".to_string())
+            }
+        }
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -125,10 +148,13 @@ pub fn open_configure_terminal() {
 
 pub fn stop() -> Result<String, String> {
     let out = run_cmd_sudo(&["adguard-cli", "stop"]);
-    if out.to_lowercase().contains("error") || out.to_lowercase().contains("failed") {
-        Err(strip_ansi(&out))
+    let clean = strip_ansi(&out);
+    let lower = clean.to_lowercase();
+    // "not running" is not really an error
+    if (lower.contains("error") || lower.contains("failed")) && !lower.contains("not running") {
+        Err(clean)
     } else {
-        Ok(strip_ansi(&out))
+        Ok("Protection stopped".to_string())
     }
 }
 

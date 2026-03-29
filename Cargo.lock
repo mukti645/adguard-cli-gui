@@ -23,6 +23,7 @@ name = "adguard-cli-gui"
 version = "0.1.0"
 dependencies = [
  "iced",
+ "libc",
  "regex",
  "tokio",
 ]
