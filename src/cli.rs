@@ -1,6 +1,5 @@
 use std::process::Command;
 use regex::Regex;
-extern crate libc;
 
 /// Strip ANSI escape codes from string
 pub fn strip_ansi(s: &str) -> String {
@@ -99,35 +98,24 @@ pub fn get_version() -> String {
 }
 
 pub fn start() -> Result<String, String> {
-    // adguard-cli start runs in foreground — spawn detached so GUI doesn't hang
-    use std::os::unix::process::CommandExt;
-    let result = unsafe {
-        Command::new("adguard-cli")
-            .arg("start")
-            .pre_exec(|| {
-                // Detach from process group so it survives GUI close
-                libc::setsid();
-                Ok(())
-            })
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-    };
-    match result {
-        Ok(_) => {
-            // Give it a moment to start, then check status
-            std::thread::sleep(std::time::Duration::from_millis(1500));
-            let status_out = run_cmd(&["adguard-cli", "status"]);
-            let clean = strip_ansi(&status_out);
-            let lower = clean.to_lowercase();
-            if lower.contains("not running") || lower.contains("failed") {
-                Err(clean)
-            } else {
-                Ok("Protection started".to_string())
-            }
+    // adguard-cli start exits on its own (~1.7s) after spawning the daemon.
+    // Running it normally (blocking) is the correct approach.
+    let out = run_cmd(&["adguard-cli", "start"]);
+    let clean = strip_ansi(&out);
+    let lower = clean.to_lowercase();
+    if lower.contains("successfully") || lower.contains("is running") || lower.contains("listening") {
+        Ok("Protection started".to_string())
+    } else if lower.contains("error") || lower.contains("failed") || lower.contains("can't") || lower.contains("cannot") {
+        Err(clean)
+    } else {
+        // Ambiguous output — verify via status
+        let status_out = run_cmd(&["adguard-cli", "status"]);
+        let status = strip_ansi(&status_out);
+        if status.to_lowercase().contains("is running") {
+            Ok("Protection started".to_string())
+        } else {
+            Err(status)
         }
-        Err(e) => Err(e.to_string()),
     }
 }
 
