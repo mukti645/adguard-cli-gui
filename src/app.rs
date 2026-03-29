@@ -45,6 +45,9 @@ pub enum Message {
     InstallAdguard,
     InstallDone(Result<String, String>),
 
+    // Configure
+    OpenConfigure,
+
     // Notification dismiss
     DismissNotification,
 }
@@ -331,6 +334,15 @@ impl AppState {
                 Task::done(Message::RefreshStatus)
             }
 
+            Message::OpenConfigure => {
+                tokio::task::spawn_blocking(cli::open_configure_terminal);
+                self.notification = Some((
+                    "Opening terminal with 'adguard-cli configure'...".to_string(),
+                    false,
+                ));
+                Task::none()
+            }
+
             Message::DismissNotification => {
                 self.notification = None;
                 Task::none()
@@ -342,6 +354,7 @@ impl AppState {
 
     pub fn view(&self) -> Element<Message> {
         let not_installed = self.status.protection == ProtectionStatus::NotInstalled;
+        let not_configured = self.status.protection == ProtectionStatus::NotConfigured;
 
         let content = column![
             self.view_header(),
@@ -350,6 +363,8 @@ impl AppState {
             {
                 let tab_content: Element<Message> = if not_installed {
                     self.view_not_installed()
+                } else if not_configured {
+                    self.view_not_configured()
                 } else {
                     match self.tab {
                         Tab::Status  => self.view_status(),
@@ -388,17 +403,19 @@ impl AppState {
 
     fn view_header(&self) -> Element<Message> {
         let status_color = match self.status.protection {
-            ProtectionStatus::Running     => cat::GREEN,
-            ProtectionStatus::Stopped     => cat::RED,
+            ProtectionStatus::Running      => cat::GREEN,
+            ProtectionStatus::Stopped      => cat::RED,
             ProtectionStatus::NotInstalled => cat::YELLOW,
-            ProtectionStatus::Unknown     => cat::OVERLAY0,
+            ProtectionStatus::NotConfigured => cat::PEACH,
+            ProtectionStatus::Unknown      => cat::OVERLAY0,
         };
 
         let status_label = match self.status.protection {
-            ProtectionStatus::Running     => "● Running",
-            ProtectionStatus::Stopped     => "● Stopped",
+            ProtectionStatus::Running      => "● Running",
+            ProtectionStatus::Stopped      => "● Stopped",
             ProtectionStatus::NotInstalled => "● Not installed",
-            ProtectionStatus::Unknown     => "● Unknown",
+            ProtectionStatus::NotConfigured => "● Not configured",
+            ProtectionStatus::Unknown      => "● Unknown",
         };
 
         let version_txt = if self.status.version.is_empty() {
@@ -879,6 +896,63 @@ impl AppState {
         ]
         .spacing(0)
         .width(Length::Fill)
+        .into()
+    }
+
+    // ── Not configured ──────────────────────────────────────────────────────
+
+    fn view_not_configured(&self) -> Element<Message> {
+        let configure_btn = button(
+            text("▶ Run adguard-cli configure").size(14).color(Color::WHITE)
+        )
+        .style(|_theme: &Theme, _status| button::Style {
+            background: Some(iced::Background::Color(cat::PEACH)),
+            border: iced::Border { radius: 8.0.into(), ..Default::default() },
+            ..Default::default()
+        })
+        .padding([12, 24])
+        .on_press(Message::OpenConfigure);
+
+        let refresh_btn = button(
+            text("↻ Refresh").size(13).color(cat::BLUE)
+        )
+        .style(|_theme: &Theme, _status| button::Style {
+            background: Some(iced::Background::Color(cat::SURFACE0)),
+            border: iced::Border { radius: 6.0.into(), ..Default::default() },
+            ..Default::default()
+        })
+        .padding([8, 16])
+        .on_press(Message::RefreshStatus);
+
+        container(
+            column![
+                text("⚙ AdGuard CLI not configured").size(18).color(cat::PEACH),
+                space::vertical().height(12),
+                text("Run the configuration wizard to set up AdGuard CLI.")
+                    .size(13).color(cat::SUBTEXT0),
+                text("Choose proxy mode, DNS settings, and install certificates.")
+                    .size(13).color(cat::SUBTEXT0),
+                space::vertical().height(24),
+                text("Or run manually in terminal:").size(13).color(cat::SUBTEXT0),
+                container(
+                    text("adguard-cli configure").size(13).color(cat::TEAL)
+                )
+                .style(|_theme: &Theme| container::Style {
+                    background: Some(iced::Background::Color(cat::MANTLE)),
+                    border: iced::Border { radius: 6.0.into(), ..Default::default() },
+                    ..Default::default()
+                })
+                .padding([8, 14]),
+                space::vertical().height(24),
+                row![configure_btn, refresh_btn].spacing(12),
+            ]
+            .align_x(Alignment::Center)
+            .spacing(6)
+        )
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .width(Length::Fill)
+        .height(Length::Fill)
         .into()
     }
 

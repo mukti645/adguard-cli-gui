@@ -13,6 +13,7 @@ pub enum ProtectionStatus {
     Stopped,
     Unknown,
     NotInstalled,
+    NotConfigured,
 }
 
 #[derive(Debug, Clone)]
@@ -50,11 +51,26 @@ pub fn which(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn is_configured() -> bool {
+    let out = run_cmd(&["adguard-cli", "config", "show"]);
+    let raw = strip_ansi(&out);
+    !raw.to_lowercase().contains("no configuration yaml")
+        && !raw.to_lowercase().contains("run `adguard-cli configure`")
+}
+
 pub fn get_status() -> Status {
     if !is_installed() {
         return Status {
             protection: ProtectionStatus::NotInstalled,
             version: String::new(),
+            raw: String::new(),
+        };
+    }
+
+    if !is_configured() {
+        return Status {
+            protection: ProtectionStatus::NotConfigured,
+            version: get_version(),
             raw: String::new(),
         };
     }
@@ -83,10 +99,27 @@ pub fn get_version() -> String {
 
 pub fn start() -> Result<String, String> {
     let out = run_cmd_sudo(&["adguard-cli", "start"]);
-    if out.to_lowercase().contains("error") || out.to_lowercase().contains("failed") {
-        Err(strip_ansi(&out))
+    let clean = strip_ansi(&out);
+    let lower = clean.to_lowercase();
+    if lower.contains("error") || lower.contains("failed") || lower.contains("can't") || lower.contains("cannot") {
+        Err(clean)
     } else {
-        Ok(strip_ansi(&out))
+        Ok(clean)
+    }
+}
+
+pub fn open_configure_terminal() {
+    let terminals = ["konsole", "kitty", "alacritty", "gnome-terminal", "xfce4-terminal", "xterm"];
+    for term in &terminals {
+        let mut cmd = Command::new(term);
+        if *term == "gnome-terminal" {
+            cmd.arg("--").arg("adguard-cli").arg("configure");
+        } else {
+            cmd.arg("-e").arg("adguard-cli configure");
+        }
+        if cmd.spawn().is_ok() {
+            return;
+        }
     }
 }
 
