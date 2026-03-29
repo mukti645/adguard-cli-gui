@@ -172,26 +172,30 @@ pub fn get_license() -> LicenseInfo {
     let raw = strip_ansi(&out);
     let lower = raw.to_lowercase();
 
-    let status = if lower.contains("activated") || lower.contains("valid") || lower.contains("premium") {
-        "Activated"
+    // adguard-cli outputs: "License status: APP_ACTIVE" or "TRIAL" etc.
+    let status = if lower.contains("app_active") || lower.contains("activated") || lower.contains("active") {
+        "Active ✓"
     } else if lower.contains("trial") {
         "Trial"
     } else if lower.contains("free") {
         "Free"
+    } else if lower.contains("expired") {
+        "Expired"
     } else {
         "Unknown"
     };
 
-    // Extract license key if present
+    // "License key: XXXX" → extract value after last ':'
     let key = raw.lines()
-        .find(|l| l.to_lowercase().contains("key") || l.to_lowercase().contains("license"))
-        .and_then(|l| l.split(':').nth(1))
+        .find(|l| l.to_lowercase().contains("license key"))
+        .and_then(|l| l.splitn(2, ':').nth(1))
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
 
+    // "License owner: email" → show as expires/owner field
     let expires = raw.lines()
-        .find(|l| l.to_lowercase().contains("expir") || l.to_lowercase().contains("until") || l.to_lowercase().contains("valid"))
-        .and_then(|l| l.split(':').nth(1))
+        .find(|l| l.to_lowercase().contains("owner") || l.to_lowercase().contains("expir"))
+        .and_then(|l| l.splitn(2, ':').nth(1))
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
 
@@ -235,51 +239,47 @@ pub fn list_filters() -> Vec<Filter> {
 }
 
 fn parse_filters(raw: &str) -> Vec<Filter> {
+    // Format: "[x] |   ID | Filter Name    date"  (enabled)
+    //         "    |   ID | Filter Name    Filter is not added"  (disabled)
+    //         "CategoryName"  (section header — no '|')
     let mut filters = Vec::new();
 
     for line in raw.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
+        // Must contain '|' to be a filter row (not a header)
+        if !line.contains('|') {
             continue;
         }
 
-        // Try to detect enabled/disabled markers
-        // Common formats: "[✓] Filter Name", "[x] Filter Name", "1. [enabled] Name", etc.
-        let enabled = line.contains("[+]") || line.contains("✓") || line.contains("enabled") || line.contains("[on]");
-        let disabled = line.contains("[-]") || line.contains("✗") || line.contains("disabled") || line.contains("[off]");
+        let enabled = line.trim_start().starts_with("[x]");
+        // "not added" means filter exists but isn't installed
+        let not_added = line.contains("not added") || line.contains("is not added");
 
-        if !enabled && !disabled {
+        // Extract name: third column after splitting by '|'
+        // "[x] |   2 | AdGuard Base filter    2026-..."
+        //  col0   col1   col2
+        let parts: Vec<&str> = line.splitn(3, '|').collect();
+        if parts.len() < 3 {
             continue;
         }
+        // col2 = "AdGuard Base filter    2026-03-29 21:15:48"
+        // trim the date/status suffix — take up to two consecutive spaces
+        let name_raw = parts[2].trim();
+        let name = if let Some(idx) = name_raw.find("  ") {
+            name_raw[..idx].trim().to_string()
+        } else {
+            name_raw.to_string()
+        };
 
-        // Extract filter name - take the part after the status marker
-        let name = line
-            .trim_start_matches(|c: char| !c.is_alphabetic())
-            .to_string();
-
-        if name.len() > 3 {
-            filters.push(Filter {
-                id: filters.len().to_string(),
-                name,
-                enabled,
-                url: String::new(),
-            });
+        if name.len() < 3 || name.starts_with("ID") || name.starts_with("Title") {
+            continue; // skip header row
         }
-    }
 
-    // If parsing failed, try simpler approach - just list lines
-    if filters.is_empty() {
-        for (i, line) in raw.lines().enumerate() {
-            let line = line.trim();
-            if line.len() > 5 && !line.starts_with("Filter") && !line.starts_with("---") {
-                filters.push(Filter {
-                    id: i.to_string(),
-                    name: line.to_string(),
-                    enabled: true,
-                    url: String::new(),
-                });
-            }
-        }
+        filters.push(Filter {
+            id: filters.len().to_string(),
+            name,
+            enabled: enabled && !not_added,
+            url: String::new(),
+        });
     }
 
     filters

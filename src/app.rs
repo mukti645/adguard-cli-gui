@@ -627,7 +627,7 @@ impl AppState {
             if !self.license_info.expires.is_empty() {
                 info_rows.push(
                     row![
-                        text("Expires: ").size(13).color(cat::SUBTEXT0),
+                        text("Owner: ").size(13).color(cat::SUBTEXT0),
                         text(&self.license_info.expires).size(13).color(cat::TEXT),
                     ]
                     .spacing(4)
