@@ -2,7 +2,7 @@ use iced::{
     Alignment, Color, Element, Length, Task, Theme,
     widget::{
         button, column, container, row, scrollable, text, text_input,
-        horizontal_rule, vertical_space, Space,
+        rule, space,
     },
 };
 
@@ -119,14 +119,15 @@ impl Default for AppState {
 // ─── Application ────────────────────────────────────────────────────────────
 
 pub fn run() -> iced::Result {
-    iced::application("AdGuard CLI", AppState::update, AppState::view)
-        .theme(|_| Theme::CatppuccinMocha)
-        .window_size((800.0, 600.0))
-        .run_with(|| {
-            let state = AppState::default();
-            let task = Task::done(Message::RefreshStatus);
-            (state, task)
-        })
+    iced::application(
+        || (AppState::default(), Task::done(Message::RefreshStatus)),
+        AppState::update,
+        AppState::view,
+    )
+    .title(|_: &AppState| String::from("AdGuard CLI"))
+    .theme(|_: &AppState| Theme::CatppuccinMocha)
+    .window_size((800.0, 600.0))
+    .run()
 }
 
 impl AppState {
@@ -345,7 +346,7 @@ impl AppState {
         let content = column![
             self.view_header(),
             self.view_tabs(),
-            horizontal_rule(1),
+            rule::horizontal(1),
             {
                 let tab_content: Element<Message> = if not_installed {
                     self.view_not_installed()
@@ -367,7 +368,7 @@ impl AppState {
         let with_notification: Element<Message> = if let Some((msg, is_error)) = &self.notification {
             column![
                 content,
-                vertical_space(),
+                space::vertical().height(Length::Fill),
                 self.view_notification(msg, *is_error),
             ]
             .into()
@@ -416,7 +417,7 @@ impl AppState {
                     .color(cat::SUBTEXT0),
             ]
             .spacing(2),
-            Space::with_width(Length::Fill),
+            space::horizontal().width(Length::Fill),
             column![
                 text(status_label).size(14).color(status_color),
                 text(version_txt).size(11).color(cat::SUBTEXT0),
@@ -550,11 +551,11 @@ impl AppState {
             .spacing(6)
             .into()
         } else {
-            vertical_space().height(0).into()
+            space::vertical().height(0).into()
         };
 
         column![
-            vertical_space().height(20),
+            space::vertical().height(20),
             container(
                 column![
                     text(big_icon).size(28).color(big_color),
@@ -562,13 +563,13 @@ impl AppState {
                 .align_x(Alignment::Center)
             )
             .center_x(Length::Fill),
-            vertical_space().height(30),
+            space::vertical().height(30),
             row![toggle_btn, refresh_btn]
                 .spacing(12)
                 .align_y(Alignment::Center),
-            vertical_space().height(30),
-            horizontal_rule(1),
-            vertical_space().height(16),
+            space::vertical().height(30),
+            rule::horizontal(1),
+            space::vertical().height(16),
             raw_output,
         ]
         .spacing(0)
@@ -618,7 +619,7 @@ impl AppState {
             }
             column![
                 text("Current License").size(15).color(cat::TEXT),
-                vertical_space().height(8),
+                space::vertical().height(8),
                 container(column(info_rows).spacing(6))
                     .style(|_theme: &Theme| container::Style {
                         background: Some(iced::Background::Color(cat::SURFACE0)),
@@ -637,12 +638,12 @@ impl AppState {
         } else if self.license_loading {
             text("Loading license info...").size(13).color(cat::SUBTEXT0).into()
         } else {
-            vertical_space().height(0).into()
+            space::vertical().height(0).into()
         };
 
         let activate_section = column![
             text("Activate License").size(15).color(cat::TEXT),
-            vertical_space().height(8),
+            space::vertical().height(8),
             row![
                 text_input("Enter license key...", &self.license_key_input)
                     .on_input(Message::LicenseKeyChanged)
@@ -693,9 +694,9 @@ impl AppState {
 
         column![
             current_info,
-            vertical_space().height(24),
+            space::vertical().height(24),
             activate_section,
-            vertical_space().height(16),
+            space::vertical().height(16),
             reset_btn,
         ]
         .spacing(0)
@@ -719,7 +720,7 @@ impl AppState {
 
         let header = row![
             text("Filters").size(15).color(cat::TEXT),
-            Space::with_width(Length::Fill),
+            space::horizontal().width(Length::Fill),
             refresh_btn,
         ]
         .align_y(Alignment::Center);
@@ -735,7 +736,7 @@ impl AppState {
             container(
                 column![
                     text("No filters found").size(14).color(cat::SUBTEXT0),
-                    vertical_space().height(8),
+                    space::vertical().height(8),
                     text("Run: adguard-cli filters list --all").size(12).color(cat::OVERLAY0),
                 ]
                 .align_x(Alignment::Center)
@@ -781,7 +782,7 @@ impl AppState {
             .into()
         };
 
-        column![header, vertical_space().height(12), body]
+        column![header, space::vertical().height(12), body]
             .spacing(0)
             .width(Length::Fill)
             .into()
@@ -859,20 +860,20 @@ impl AppState {
             .width(Length::Fill);
 
             column![
-                vertical_space().height(16),
+                space::vertical().height(16),
                 text("Output:").size(12).color(cat::SUBTEXT0),
-                vertical_space().height(6),
+                space::vertical().height(6),
                 out_box,
             ]
             .spacing(0)
             .into()
         } else {
-            vertical_space().height(0).into()
+            space::vertical().height(0).into()
         };
 
         column![
             text("Updates & Logs").size(15).color(cat::TEXT),
-            vertical_space().height(16),
+            space::vertical().height(16),
             row![check_btn, update_btn, logs_btn].spacing(10),
             update_output,
         ]
@@ -905,14 +906,14 @@ impl AppState {
         container(
             column![
                 text("⚠ AdGuard CLI not installed").size(18).color(cat::YELLOW),
-                vertical_space().height(12),
+                space::vertical().height(12),
                 text("adguard-cli is required to run this application.")
                     .size(13)
                     .color(cat::SUBTEXT0),
                 text("It will be installed from the AUR (adguard-cli-bin).")
                     .size(13)
                     .color(cat::SUBTEXT0),
-                vertical_space().height(24),
+                space::vertical().height(24),
                 text("Or install manually:").size(13).color(cat::SUBTEXT0),
                 container(
                     text("paru -S adguard-cli-bin").size(13).color(cat::TEAL)
@@ -923,7 +924,7 @@ impl AppState {
                     ..Default::default()
                 })
                 .padding([8, 14]),
-                vertical_space().height(24),
+                space::vertical().height(24),
                 install_btn,
             ]
             .align_x(Alignment::Center)
@@ -945,7 +946,7 @@ impl AppState {
         container(
             row![
                 text(msg).size(13).color(fg),
-                Space::with_width(Length::Fill),
+                space::horizontal().width(Length::Fill),
                 button(text("✕").size(12).color(fg))
                     .style(|_theme, _status| button::Style {
                         background: None,
