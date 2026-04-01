@@ -24,6 +24,7 @@ pub struct Status {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Filter {
     pub id: String,
     pub name: String,

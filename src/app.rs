@@ -352,7 +352,7 @@ impl AppState {
 
     // ── View ────────────────────────────────────────────────────────────────
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<'_, Message> {
         let not_installed = self.status.protection == ProtectionStatus::NotInstalled;
         let not_configured = self.status.protection == ProtectionStatus::NotConfigured;
 
@@ -401,7 +401,7 @@ impl AppState {
             .into()
     }
 
-    fn view_header(&self) -> Element<Message> {
+    fn view_header(&self) -> Element<'_, Message> {
         let status_color = match self.status.protection {
             ProtectionStatus::Running      => cat::GREEN,
             ProtectionStatus::Stopped      => cat::RED,
@@ -447,7 +447,7 @@ impl AppState {
         .into()
     }
 
-    fn view_tabs(&self) -> Element<Message> {
+    fn view_tabs(&self) -> Element<'_, Message> {
         let tabs = [
             (Tab::Status,  "Status"),
             (Tab::License, "License"),
@@ -496,7 +496,7 @@ impl AppState {
 
     // ── Status Tab ──────────────────────────────────────────────────────────
 
-    fn view_status(&self) -> Element<Message> {
+    fn view_status(&self) -> Element<'_, Message> {
         let is_running = self.status.protection == ProtectionStatus::Running;
 
         let toggle_label = if self.toggling {
@@ -597,7 +597,7 @@ impl AppState {
 
     // ── License Tab ─────────────────────────────────────────────────────────
 
-    fn view_license(&self) -> Element<Message> {
+    fn view_license(&self) -> Element<'_, Message> {
         let license_status_color = match self.license_info.status.to_lowercase().as_str() {
             s if s.contains("activated") || s.contains("valid") || s.contains("premium") => cat::GREEN,
             s if s.contains("trial") => cat::YELLOW,
@@ -723,7 +723,7 @@ impl AppState {
 
     // ── Filters Tab ─────────────────────────────────────────────────────────
 
-    fn view_filters(&self) -> Element<Message> {
+    fn view_filters(&self) -> Element<'_, Message> {
         let refresh_btn = button(
             text("↻ Refresh").size(13).color(cat::BLUE)
         )
@@ -807,7 +807,7 @@ impl AppState {
 
     // ── Updates Tab ─────────────────────────────────────────────────────────
 
-    fn view_updates(&self) -> Element<Message> {
+    fn view_updates(&self) -> Element<'_, Message> {
         let check_btn = button(
             text(if self.update_loading { "Checking..." } else { "Check for updates" })
                 .size(13)
@@ -901,7 +901,7 @@ impl AppState {
 
     // ── Not configured ──────────────────────────────────────────────────────
 
-    fn view_not_configured(&self) -> Element<Message> {
+    fn view_not_configured(&self) -> Element<'_, Message> {
         let configure_btn = button(
             text("▶ Run adguard-cli configure").size(14).color(Color::WHITE)
         )
@@ -958,7 +958,7 @@ impl AppState {
 
     // ── Not installed ───────────────────────────────────────────────────────
 
-    fn view_not_installed(&self) -> Element<Message> {
+    fn view_not_installed(&self) -> Element<'_, Message> {
         let install_btn = button(
             text(if self.loading { "Installing..." } else { "Install adguard-cli via AUR" })
                 .size(14)
