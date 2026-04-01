@@ -41,9 +41,9 @@ pub enum Message {
     ExportLogs,
     LogsExported(Result<String, String>),
 
-    // Install
-    InstallAdguard,
-    InstallDone(Result<String, String>),
+    // Install / download
+    OpenDownloadPage,
+    DownloadPageResult(Result<String, String>),
 
     // Configure
     OpenConfigure,
@@ -194,7 +194,6 @@ impl AppState {
                     Ok(msg) => self.notification = Some((msg, false)),
                     Err(e) => self.notification = Some((e, true)),
                 }
-                // Refresh status after toggle
                 Task::done(Message::RefreshStatus)
             }
 
@@ -316,22 +315,22 @@ impl AppState {
                 Task::none()
             }
 
-            Message::InstallAdguard => {
+            Message::OpenDownloadPage => {
                 self.loading = true;
-                self.notification = Some(("Installing adguard-cli-bin via AUR...".to_string(), false));
+                self.notification = Some(("Opening download page...".to_string(), false));
                 Task::perform(
-                    async { tokio::task::spawn_blocking(cli::install_via_aur).await.unwrap() },
-                    Message::InstallDone,
+                    async { tokio::task::spawn_blocking(cli::open_download_page).await.unwrap() },
+                    Message::DownloadPageResult,
                 )
             }
 
-            Message::InstallDone(result) => {
+            Message::DownloadPageResult(result) => {
                 self.loading = false;
                 match result {
                     Ok(msg) => self.notification = Some((msg, false)),
                     Err(e) => self.notification = Some((e, true)),
                 }
-                Task::done(Message::RefreshStatus)
+                Task::none()
             }
 
             Message::OpenConfigure => {
@@ -361,7 +360,7 @@ impl AppState {
             self.view_tabs(),
             rule::horizontal(1),
             {
-                let tab_content: Element<Message> = if not_installed {
+                let tab_content: Element<'_, Message> = if not_installed {
                     self.view_not_installed()
                 } else if not_configured {
                     self.view_not_configured()
@@ -380,7 +379,7 @@ impl AppState {
         ]
         .spacing(0);
 
-        let with_notification: Element<Message> = if let Some((msg, is_error)) = &self.notification {
+        let with_notification: Element<'_, Message> = if let Some((msg, is_error)) = &self.notification {
             column![
                 content,
                 space::vertical().height(Length::Fill),
@@ -403,19 +402,21 @@ impl AppState {
 
     fn view_header(&self) -> Element<'_, Message> {
         let status_color = match self.status.protection {
-            ProtectionStatus::Running      => cat::GREEN,
-            ProtectionStatus::Stopped      => cat::RED,
-            ProtectionStatus::NotInstalled => cat::YELLOW,
+            ProtectionStatus::Running       => cat::GREEN,
+            ProtectionStatus::Stopped       => cat::RED,
+            ProtectionStatus::NotInstalled  => cat::YELLOW,
             ProtectionStatus::NotConfigured => cat::PEACH,
-            ProtectionStatus::Unknown      => cat::OVERLAY0,
+            ProtectionStatus::NoLicense     => cat::YELLOW,
+            ProtectionStatus::Unknown       => cat::OVERLAY0,
         };
 
         let status_label = match self.status.protection {
-            ProtectionStatus::Running      => "● Running",
-            ProtectionStatus::Stopped      => "● Stopped",
-            ProtectionStatus::NotInstalled => "● Not installed",
+            ProtectionStatus::Running       => "● Running",
+            ProtectionStatus::Stopped       => "● Stopped",
+            ProtectionStatus::NotInstalled  => "● Not installed",
             ProtectionStatus::NotConfigured => "● Not configured",
-            ProtectionStatus::Unknown      => "● Unknown",
+            ProtectionStatus::NoLicense     => "● No license",
+            ProtectionStatus::Unknown       => "● Unknown",
         };
 
         let version_txt = if self.status.version.is_empty() {
@@ -455,7 +456,7 @@ impl AppState {
             (Tab::Updates, "Updates"),
         ];
 
-        let tab_buttons: Vec<Element<Message>> = tabs
+        let tab_buttons: Vec<Element<'_, Message>> = tabs
             .iter()
             .map(|(tab, label)| {
                 let active = &self.tab == tab;
@@ -508,8 +509,16 @@ impl AppState {
         };
 
         let toggle_color = if is_running { cat::RED } else { cat::GREEN };
-        let big_icon = if is_running { "🛡️ Protection ON" } else { "🔴 Protection OFF" };
-        let big_color = if is_running { cat::GREEN } else { cat::RED };
+        let big_icon = match self.status.protection {
+            ProtectionStatus::Running   => "🛡️ Protection ON",
+            ProtectionStatus::NoLicense => "⚠ No License",
+            _                           => "🔴 Protection OFF",
+        };
+        let big_color = match self.status.protection {
+            ProtectionStatus::Running   => cat::GREEN,
+            ProtectionStatus::NoLicense => cat::YELLOW,
+            _                           => cat::RED,
+        };
 
         let toggle_btn = button(
             text(toggle_label).size(14).color(Color::WHITE)
@@ -544,7 +553,7 @@ impl AppState {
         .padding([8, 16])
         .on_press(Message::RefreshStatus);
 
-        let raw_output: Element<Message> = if !self.status.raw.is_empty() {
+        let raw_output: Element<'_, Message> = if !self.status.raw.is_empty() {
             column![
                 text("Status output:").size(12).color(cat::SUBTEXT0),
                 container(
@@ -599,14 +608,15 @@ impl AppState {
 
     fn view_license(&self) -> Element<'_, Message> {
         let license_status_color = match self.license_info.status.to_lowercase().as_str() {
-            s if s.contains("activated") || s.contains("valid") || s.contains("premium") => cat::GREEN,
+            s if s.contains("active") || s.contains("valid") || s.contains("premium") => cat::GREEN,
             s if s.contains("trial") => cat::YELLOW,
             s if s.contains("free") => cat::BLUE,
+            s if s.contains("no license") => cat::YELLOW,
             _ => cat::SUBTEXT0,
         };
 
-        let current_info: Element<Message> = if !self.license_info.raw.is_empty() {
-            let mut info_rows: Vec<Element<Message>> = vec![
+        let current_info: Element<'_, Message> = if !self.license_info.raw.is_empty() {
+            let mut info_rows: Vec<Element<'_, Message>> = vec![
                 row![
                     text("Status: ").size(13).color(cat::SUBTEXT0),
                     text(&self.license_info.status).size(13).color(license_status_color),
@@ -742,7 +752,7 @@ impl AppState {
         ]
         .align_y(Alignment::Center);
 
-        let body: Element<Message> = if self.filters_loading {
+        let body: Element<'_, Message> = if self.filters_loading {
             container(
                 text("Loading filters...").size(13).color(cat::SUBTEXT0)
             )
@@ -754,7 +764,8 @@ impl AppState {
                 column![
                     text("No filters found").size(14).color(cat::SUBTEXT0),
                     space::vertical().height(8),
-                    text("Run: adguard-cli filters list --all").size(12).color(cat::OVERLAY0),
+                    text("Filters require an active license. Use the License tab to activate one.")
+                        .size(12).color(cat::OVERLAY0),
                 ]
                 .align_x(Alignment::Center)
                 .spacing(0)
@@ -763,7 +774,7 @@ impl AppState {
             .padding(30)
             .into()
         } else {
-            let items: Vec<Element<Message>> = self
+            let items: Vec<Element<'_, Message>> = self
                 .filters
                 .iter()
                 .map(|f| {
@@ -857,7 +868,7 @@ impl AppState {
         .padding([8, 16])
         .on_press(Message::ExportLogs);
 
-        let update_output: Element<Message> = if !self.update_info.is_empty() {
+        let update_output: Element<'_, Message> = if !self.update_info.is_empty() {
             let out_box = container(
                 scrollable(
                     text(&self.update_info).size(12).color(cat::TEXT)
@@ -959,10 +970,8 @@ impl AppState {
     // ── Not installed ───────────────────────────────────────────────────────
 
     fn view_not_installed(&self) -> Element<'_, Message> {
-        let install_btn = button(
-            text(if self.loading { "Installing..." } else { "Install adguard-cli via AUR" })
-                .size(14)
-                .color(Color::WHITE)
+        let download_btn = button(
+            text("⬇ Download from GitHub").size(14).color(Color::WHITE)
         )
         .style(|_theme, _status| button::Style {
             background: Some(iced::Background::Color(cat::MAUVE)),
@@ -971,11 +980,24 @@ impl AppState {
         })
         .padding([12, 24]);
 
-        let install_btn = if !self.loading {
-            install_btn.on_press(Message::InstallAdguard)
+        let download_btn = if !self.loading {
+            download_btn.on_press(Message::OpenDownloadPage)
         } else {
-            install_btn
+            download_btn
         };
+
+        let refresh_btn = button(
+            text("↻ Check again").size(13).color(cat::BLUE)
+        )
+        .style(|_theme: &Theme, _status| button::Style {
+            background: Some(iced::Background::Color(cat::SURFACE0)),
+            border: iced::Border { radius: 6.0.into(), ..Default::default() },
+            ..Default::default()
+        })
+        .padding([8, 16])
+        .on_press(Message::RefreshStatus);
+
+        let url = "https://github.com/AdguardTeam/AdGuardCLI/releases";
 
         container(
             column![
@@ -984,22 +1006,21 @@ impl AppState {
                 text("adguard-cli is required to run this application.")
                     .size(13)
                     .color(cat::SUBTEXT0),
-                text("It will be installed from the AUR (adguard-cli-bin).")
+                text("Download the latest release for your platform from GitHub:")
                     .size(13)
                     .color(cat::SUBTEXT0),
-                space::vertical().height(24),
-                text("Or install manually:").size(13).color(cat::SUBTEXT0),
+                space::vertical().height(12),
                 container(
-                    text("paru -S adguard-cli-bin").size(13).color(cat::TEAL)
+                    text(url).size(13).color(cat::TEAL)
                 )
-                .style(|_theme| container::Style {
+                .style(|_theme: &Theme| container::Style {
                     background: Some(iced::Background::Color(cat::MANTLE)),
                     border: iced::Border { radius: 6.0.into(), ..Default::default() },
                     ..Default::default()
                 })
                 .padding([8, 14]),
                 space::vertical().height(24),
-                install_btn,
+                row![download_btn, refresh_btn].spacing(12),
             ]
             .align_x(Alignment::Center)
             .spacing(6)
@@ -1017,9 +1038,12 @@ impl AppState {
         let bg = if is_error { cat::RED } else { cat::GREEN };
         let fg = Color::WHITE;
 
+        // Truncate display message to prevent overflow (max ~120 chars)
+        let display_msg: &str = if msg.len() > 120 { &msg[..120] } else { msg };
+
         container(
             row![
-                text(msg).size(13).color(fg),
+                text(display_msg).size(13).color(fg),
                 space::horizontal().width(Length::Fill),
                 button(text("✕").size(12).color(fg))
                     .style(|_theme, _status| button::Style {
