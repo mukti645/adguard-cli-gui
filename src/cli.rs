@@ -365,7 +365,12 @@ fn parse_filters(raw: &str) -> Vec<Filter> {
 pub fn export_logs(path: &str) -> Result<String, String> {
     let r = run_cmd_full(&["adguard-cli", "export-logs", "-o", path]);
     let clean = strip_ansi(&r.combined());
-    if !r.exit_success || clean.to_lowercase().contains("error") {
+    let lower = clean.to_lowercase();
+    if !r.exit_success
+        || lower.contains("error")
+        || lower.contains("failed")
+        || lower.contains("fail")
+    {
         Err(truncate_msg(&clean))
     } else {
         Ok(truncate_msg(&clean))
@@ -380,7 +385,12 @@ pub fn check_update() -> String {
 pub fn update() -> Result<String, String> {
     let r = run_cmd_full(&["adguard-cli", "update"]);
     let clean = strip_ansi(&r.combined());
-    if !r.exit_success || clean.to_lowercase().contains("error") {
+    let lower = clean.to_lowercase();
+    if !r.exit_success
+        || lower.contains("error")
+        || lower.contains("failed")
+        || lower.contains("fail")
+    {
         Err(truncate_msg(&clean))
     } else {
         Ok(truncate_msg(&clean))
